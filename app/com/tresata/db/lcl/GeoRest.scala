@@ -2,11 +2,14 @@ package com.tresata.db.lcl
 
 import com.mongodb.casbah.Imports._
 import com.mongodb.util.{JSON => JJSON}
+import java.io.File
+import java.io.FileWriter
 
 
 abstract class QueryObject // marker 
 case class Find(val coll : String, val options : Map[String,QueryParam]) extends QueryObject
 case class More(val cursorId : Int, val options : Map[String,QueryParam]) extends QueryObject
+case class Exporter(val coll : String, val options : Map[String,QueryParam]) extends QueryObject
 
 abstract class QueryParam
 case class Query(val mobj : DBObject) extends QueryParam
@@ -47,6 +50,8 @@ class GeoRest(val host : String = "localhost", val port : Int = 27017) {
   var cursorNum : Int = 0
   
   var mongoConn = MongoConnection(host,port)
+  
+  var tmpDirectory : File = null;
   
   
   
@@ -132,6 +137,54 @@ class GeoRest(val host : String = "localhost", val port : Int = 27017) {
       case _ => (-1,None)
     }   
     
+  }
+  
+  def doExport(db:String,q : Exporter) = {
+      val mongoDb : MongoDB = mongoConn(db)
+      
+      val (cursorNum,cursor) = q match {
+        case Exporter(coll,qry) => getCursor(mongoDb(coll),qry)
+      }
+      
+      	// Now create temporary file to store data
+      val f = File.createTempFile("geo-export",".csv.mongrestmp")
+      
+      if (tmpDirectory == null)
+        tmpDirectory = f.getParentFile()
+      
+      val fr = new FileWriter(f)
+      var cnt = 0
+      var headerStr : Option[String] = None
+      cursor match {
+      	  case Some(c) => {
+				        while (c.hasNext){
+				          val dbo = c.next
+				          if (headerStr == None){
+				            headerStr = Some(dbo.keys.mkString("|"))
+				            fr.write(headerStr.get + "\n")
+				          }
+				          val line = dbo.values.mkString("|") + "\n"
+					      fr.write(line)
+					      if (cnt > -1) cnt = cnt + 1
+					    }
+				      }
+	      case None =>
+	   }
+      fr.close
+      
+      (f.getName(),cnt)
+  }
+  
+  def getExportFile(filename:String) = {
+    if (tmpDirectory == null){
+      tmpDirectory = File.createTempFile("deleteme",".tmp").getParentFile()
+    }
+    val f = new File(tmpDirectory,filename)
+    
+    if (f.exists())
+      Some(f)
+    else
+      None
   }
   
 }

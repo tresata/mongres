@@ -1,5 +1,6 @@
 package controllers
 
+import java.io.File
 import play.api._
 import play.api.mvc._
 import play.api.libs.json._
@@ -62,6 +63,11 @@ object Application extends Controller {
   		Ok(storeJson)
   	  }).getOrElse{
   	  BadRequest("Error Retrieving Data")
+  	}
+  	
+  	storeRec match {
+  	  case Some(js) => Ok(Json.parse(js.toString))
+  	  case None => BadRequest("Error retrieving Data")
   	}
   	
  // 	Ok("working")
@@ -152,10 +158,19 @@ object Application extends Controller {
 		val gs = GeoRest()
 		  
 		val (cursorNum,res) = gs.doQuery(db, mobj)
-		  
-		var resStr = "[" + res.tail.foldLeft(res.head.toString)(_ + "," + GeoRest.jsonStringFromDbObject(_)) + "]"
+		 
+		val resStr = (cursorNum,res) match {
+		  case (cn,Nil) =>  """{"ok":1,"id":-1,"results":{}}"""
+		  case (cn,hd :: Nil) => val tmp = "[" + GeoRest.jsonStringFromDbObject(res.head) + "]"
+								 """{"ok": 1, "id": """ + cursorNum +  """, "results": """ + tmp + "}"
+		  case (cn,res) =>  val tmp = "[" + res.tail.foldLeft(res.head.toString)(_ + "," + GeoRest.jsonStringFromDbObject(_)) + "]"
+							"""{"ok": 1, "id": """ + cursorNum +  """, "results": """ + tmp + "}"
+		}
+		
+		
+//		var resStr = "[" + res.tail.foldLeft(res.head.toString)(_ + "," + GeoRest.jsonStringFromDbObject(_)) + "]"
 //		println("ResStr----" + resStr)
-		resStr = """{"ok": 1, "id": """ + cursorNum +  """, "results": """ + resStr + "}"  
+//		resStr = """{"ok": 1, "id": """ + cursorNum +  """, "results": """ + resStr + "}"  
 		val storeJson = Json.parse(resStr)
 		
 	    Ok(storeJson)
@@ -203,6 +218,49 @@ object Application extends Controller {
   	val res = """{"ok": 1,"host": """ + host + """, "port": """ + port.toString + "}"
   	
   	Ok(res)
+  }
+  
+  /**
+   * Method receives a list of id's and exports the records to a temporary csv file and 
+   * returns the url to retrieve the file.
+   */
+  def constructExport(db:String,coll:String) = Action{ implicit request =>
+  	val body = request.body
+  	
+  	val idList =  body.asJson match {
+  	  case Some(js : JsObject) => (js \ "id-list").asOpt[List[String]].getOrElse(List())
+  	  case _ => List()
+  	}
+  	
+  	val idField = body.asJson match {
+  	  case Some(js : JsObject) => (js \ "id-field").asOpt[String]
+  			  						.getOrElse(BadRequest("id-field name required for export request"))
+  	  case _ => BadRequest("id-field name required for export request")
+  	} 
+  	
+  	val requestString = "{\"" + idField + "\": { \"$in\" : [" + idList.mkString(",") + "]}}"
+  	
+  	val gs = GeoRest()
+  	
+  	val requestObject = GeoRest.dbObjectFromJsonString(requestString)
+  	val qobj = Query(requestObject) 
+  	
+  	var options = Map[String,QueryParam]("criteria" -> qobj)
+  	val (exportResourcePath,cnt) = gs.doExport(db,Exporter(coll,options))
+  	
+  	val res = """{"resourceUrl":"""" + exportResourcePath + """","count":""" + cnt + "}"
+  	
+  	Ok(res)
+  }
+  
+  def downloadExport(db : String, filename : String) = Action {
+    val gs = GeoRest()
+    
+    gs.getExportFile(filename) match {
+      case Some(file) => Ok.sendFile(file, false, (f : File) => { val fn = f.getName; if (fn.endsWith(".mongrestmp")) fn.dropRight(11) else fn }).as("text/csv") 
+ //     case Some(file) => Ok.sendFile(file, true) 
+      case None => BadRequest("Export File Not found") 
+    }
   }
   
   
