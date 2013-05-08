@@ -38,6 +38,9 @@ object GeoRest {
   }
   
   def jsonStringFromDbObject(db : DBObject) = {
+//    if (db.get("name") == "Telstra Corp Ltd"){
+//      println("here's db")
+//    }
     JJSON.serialize(db)
   }
 }

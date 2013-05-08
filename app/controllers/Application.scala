@@ -125,8 +125,8 @@ object Application extends Controller {
 		  case (cn,res) =>  resStr = "[" + res.tail.foldLeft(res.head.toString)(_ + "," + GeoRest.jsonStringFromDbObject(_)) + "]"
 							resStr = """{"ok": 1, "id": """ + cursorNum +  """, "results": """ + resStr + "}"
 		}
-		  
-		val storeJson = Json.parse(resStr)
+		val resStr2 = resStr.replaceAll("""\bNaN\b""","0")
+		val storeJson = Json.parse(resStr2)
 		
 	    Ok(storeJson)
   	} catch {
